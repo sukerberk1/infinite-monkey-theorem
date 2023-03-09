@@ -1,11 +1,21 @@
 #[macro_use] extern crate rocket;
 
-use rocket::http::Status;
-use rocket::response::{content, status};
+use rocket::form::Form;
+use rocket::response::content;
+use rocket_dyn_templates::{Template, context};
 use rand::{Rng, thread_rng};
 
-#[get("/<slug>")]
-fn json(slug: String) -> status::Custom<content::RawJson<String>> {
+
+#[derive(FromForm)]
+struct InputWord {
+    #[field(default = "hello")]
+    word: String,
+}
+
+
+#[post("/generate", data = "<input>")]
+fn generate(input: Form<InputWord>) -> content::RawHtml<String> {
+    let slug: String = input.word.clone();
     let mut rng = thread_rng();
     let mut generated_text = String::with_capacity(128);
     loop {
@@ -16,23 +26,36 @@ fn json(slug: String) -> status::Custom<content::RawJson<String>> {
         }
     }
     
-    // let generated_text = &generated_text[generated_text.len()-100..];
     let chars_pushed = generated_text.len()-slug.len();
-    let monkey_id = rng.gen_range(0..1000);
-    if generated_text.len()>100{
-        generated_text = generated_text[generated_text.len()-100..].to_string();
+    if generated_text.len()>300{
+        generated_text = generated_text[generated_text.len()-300..].to_string();
     }
-    status::Custom(Status::ImATeapot, content::RawJson(format!(" {{
-        \"monkey_id\": \"{}\" 
-        \"last_100_generated\": \"{}\" 
-        \"chars_pushed\": \"{}\" 
-    }}",  
-    monkey_id, 
-    generated_text, 
-    chars_pushed)))
+
+    content::RawHtml(format!("
+    <div class=\"p-4 grow bg-gray-800/70 md:w-3/6 md:rounded\">
+    <h1 class=\"text-3xl\">
+    Results
+    </h1>
+    <p>Monkey has written {} characters in search of the word '{}'! </p>
+    </div>
+    <div class=\"p-4 grow bg-gray-800/70 md:w-3/6 md:rounded\">
+    Monkey's prompt (last 300 characters):<br/>
+    <code class=\"rounded p-1 bg-gray-700 w-fit break-words\">
+    {}
+    </code>
+    </div>
+    ",chars_pushed, slug, generated_text))
 }
+
+
+#[get("/")]
+fn index() -> Template {
+    Template::render("index", context!{foo:123})
+}
+
 
 #[launch]
 fn rocket() -> _ {
-    rocket::build().mount("/", routes![json])
+    rocket::build().mount("/", routes![generate, index])
+    .attach(Template::fairing())
 }
